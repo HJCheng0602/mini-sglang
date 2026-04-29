@@ -223,6 +223,65 @@ def parse_args(args: List[str], run_shell: bool = False) -> Tuple[ServerArgs, bo
         help="Run the server in shell mode.",
     )
 
+    parser.add_argument(
+        "--pd-enabled",
+        action="store_true",
+        help="Enable Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--pd-role",
+        type=str,
+        choices=["prefill", "decode", "standalone"],
+        default="standalone",
+        help="The role of the worker in Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--prefill-worker-addr",
+        type=str,
+        default="localhost",
+        help="The address of the prefill worker in Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--prefill-worker-port",
+        type=int,
+        default=29500,
+        help="The port of the prefill worker in Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--decode-worker-addr",
+        type=str,
+        default="localhost",
+        help="The address of the decode worker in Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--decode-worker-port",
+        type=int,
+        default=29000,
+        help="The port of the decode worker in Prefill-Decode disaggregation.",
+    )
+
+    parser.add_argument(
+        "--kv-transfer-backend",
+        type=str,
+        choices=["nccl", "gloo"],
+        default="nccl",
+        help="The backend for KV cache transfer between prefill and decode workers.",
+    )
+
+    parser.add_argument(
+        "--kv-transfer-chunk-size",
+        type=int,
+        default=0,
+        help="The chunk size for KV cache transfer between prefill and decode workers. 0 means no chunking.",
+    )
+
+
+
     # Parse arguments
     kwargs = parser.parse_args(args).__dict__.copy()
 

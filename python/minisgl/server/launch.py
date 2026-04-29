@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from minisgl.distributed import DistributedInfo
 from minisgl.utils import init_logger
+from minisgl.pd.config import PDConfig
 
 if TYPE_CHECKING:
     from .args import ServerArgs
@@ -111,6 +112,58 @@ def launch_server(run_shell: bool = False) -> None:
             logger.info(ack_queue.get())
 
     run_api_server(server_args, start_subprocess, run_shell=run_shell)
+
+def _run_prefill_worker(args: PDConfig, ack_queue: mp.Queue[str]) -> None:
+
+    import torch
+    from minisgl.pd.prefillworker import PrefillWorker
+
+    with torch.inference_mode():
+        worker = PrefillWorker(args)
+
+        ack_queue.put("Prefill worker is ready")
+        try: 
+            worker.run_forever()
+        except KeyboardInterrupt:
+            logger = init_logger(__name__)
+            logger.info("Prefill worker exiting gracefully...")
+            worker.shutdown()
+
+def _run_decode_worker(args:PDConfig, ack_queue: mp.Queue[str]) -> None:
+    # TODO: implement decode worker
+    pass
+
+def launch_prefill_worker(args: PDConfig) -> None:
+    from .args import parse_args
+    mp.set_start_method("spawn", force=True)
+    logger = init_logger(__name__, "PD initializer")
+    ack_queue: mp.Queue[str] = mp.Queue()
+
+    if args.is_prefill_worker:
+        mp.Process(
+            target=_run_prefill_worker,
+            args=(args, ack_queue),
+            daemon=False,
+            name="minisgl-prefill-worker",
+        ).start()
+    else:
+        mp.Process(
+            target=_run_decode_worker,
+            args=(args, ack_queue),
+            daemon=False,
+            name="minisgl-decode-worker",
+        ).start()
+    
+    # if args.is_prefill_worker:
+    #     logger.info(ack_queue.get())
+    # if args.is_decode_worker:
+    #     logger.info(ack_queue.get())
+
+    num_workers = (1 if args.is_prefill_worker else 0) + (1 if args.is_decode_worker else 0)
+
+    for _ in range(num_workers):
+        logger.info(ack_queue.get())
+
 
 
 if __name__ == "__main__":
