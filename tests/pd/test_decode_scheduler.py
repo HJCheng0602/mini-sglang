@@ -36,7 +36,9 @@ def test_decode_scheduler():
     logger.info("test_decode_scheduler_init passed")
 
     # 2: Add a decode request (simulate receiving from prefill)
-    device_len = 50
+    # After prefill: input_len=50, sampled 1 token → device_len=51, cached_len=50
+    cached_len = 50
+    device_len = 51
     num_pages = device_len  # page_size=1
     local_page_indices = scheduler.cache_manager.allocate_for_transfer(num_pages)
 
@@ -44,7 +46,7 @@ def test_decode_scheduler():
         uid=0,
         input_ids=torch.randint(0, 1000, (device_len,), dtype=torch.int32),
         sampling_params=SamplingParams(max_tokens=10),
-        cached_len=device_len,
+        cached_len=cached_len,
         device_len=device_len,
         local_page_indices=local_page_indices,
     )
@@ -78,7 +80,7 @@ def test_decode_scheduler():
             uid=i,
             input_ids=torch.randint(0, 1000, (device_len,), dtype=torch.int32),
             sampling_params=SamplingParams(max_tokens=5),
-            cached_len=device_len,
+            cached_len=cached_len,
             device_len=device_len,
             local_page_indices=indices,
         )

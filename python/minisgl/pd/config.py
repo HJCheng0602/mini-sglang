@@ -27,9 +27,16 @@ class PDConfig(SchedulerConfig):
 
     pd_debug: bool = False
 
+    # Override to allow different ports per worker process
+    distributed_port: int = 2333
+
     def __post_init__(self):
         if self.kv_transfer_backend_config is None:
             object.__setattr__(self, 'kv_transfer_backend_config', {})
+
+    @property
+    def distributed_addr(self) -> str:
+        return f"tcp://127.0.0.1:{self.distributed_port}"
 
     @property
     def is_prefill_worker(self) -> bool:

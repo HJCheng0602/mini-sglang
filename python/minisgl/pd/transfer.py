@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Tuple
 
 import torch
 import torch.distributed as dist
@@ -17,12 +17,13 @@ class KVTransferManager:
     def __init__(self, backend_name: str, config: dict):
         self.backend: BaseKVTransferBackend = create_transfer_backend(backend_name, config)
         self.backend_name = backend_name
+        self._recv_ctx: Dict[int, Tuple[torch.Tensor, List[torch.Tensor], MHAKVCache]] = {}
         logger.info(f"KV Transfer Manager created with backend {backend_name}")
 
     def prepare_kv_data(
             self,
             kv_cache: MHAKVCache,
-            paged_indices:torch.Tensor) -> List[torch.Tensor]:
+            paged_indices: torch.Tensor) -> List[torch.Tensor]:
         num_layers = kv_cache.num_layers
         kv_data_list = []
 
@@ -36,7 +37,7 @@ class KVTransferManager:
             kv_data = torch.stack([k_data, v_data], dim=0)
             kv_data_list.append(kv_data)
         return kv_data_list
-    
+
     def prepare_recv_buffers(
         self,
         kv_cache: MHAKVCache,
@@ -57,7 +58,7 @@ class KVTransferManager:
             )
             recv_buffers.append(buffer)
         return recv_buffers
-    
+
     def send(self, uid: int, kv_cache: MHAKVCache, paged_indices: torch.Tensor, dst_rank: int) -> None:
         kv_data_list = self.prepare_kv_data(kv_cache, paged_indices)
 
@@ -89,7 +90,9 @@ class KVTransferManager:
         )
         self.backend.init_transfer(args)
         self.backend.recv_kv_cache(args, recv_buffers)
+        self._recv_ctx[uid] = (paged_indices, recv_buffers, kv_cache)
 
+    def _complete_recv(self, kv_cache: MHAKVCache, paged_indices: torch.Tensor, recv_buffers: List[torch.Tensor]) -> None:
         page_indices_gpu = paged_indices.to(kv_cache.device, non_blocking=True)
 
         for layer_id, recv_buffer in enumerate(recv_buffers):
@@ -99,16 +102,21 @@ class KVTransferManager:
             kv_cache.k_cache(layer_id)[page_indices_gpu] = k_data
             kv_cache.v_cache(layer_id)[page_indices_gpu] = v_data
 
-        logger.debug(f"Received KV cache for UID {uid} from rank {src_rank}")
+        logger.debug("KV cache copy-back completed")
 
     def poll(self, uid: int) -> TransferStatus:
-        return self.backend.poll(uid)
-    
+        status = self.backend.poll(uid)
+        if status == TransferStatus.SUCCESS:
+            ctx = self._recv_ctx.get(uid)
+            if ctx is not None:
+                paged_indices, recv_buffers, kv_cache = ctx
+                self._complete_recv(kv_cache, paged_indices, recv_buffers)
+        return status
+
     def cleanup(self, uid: int) -> None:
         self.backend.cleanup(uid)
+        self._recv_ctx.pop(uid, None)
 
     def shutdown(self):
         self.backend.shutdown()
         logger.info(f"KV Transfer Manager with backend {self.backend_name} has been shutdown")
-
-    

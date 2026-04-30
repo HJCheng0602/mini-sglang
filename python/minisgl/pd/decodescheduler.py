@@ -140,7 +140,17 @@ class DecodeScheduler:
     
     def _free_req_resources(self, req: Req) -> None:
         self.table_manager.free(req.table_idx)
-        self.cache_manager.cache_req(req, finished=True)
+        if isinstance(req.cache_handle, NullCacheHandle):
+            # NullCacheHandle doesn't interact with prefix cache,
+            # free pages directly
+            page_indices = self.engine.page_table[req.table_idx, :req.cached_len]
+            if len(page_indices) > 0:
+                freed_pages = page_indices[::self.cache_manager.page_size]
+                self.cache_manager.free_slots = torch.cat(
+                    [self.cache_manager.free_slots, freed_pages]
+                )
+        else:
+            self.cache_manager.cache_req(req, finished=True)
 
     def shutdown(self) -> None:
         torch.cuda.synchronize(self.device)

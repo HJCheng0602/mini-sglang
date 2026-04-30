@@ -44,12 +44,14 @@ def test_decode_worker():
     logger.info("test_decode_worker_init passed")
 
     # 2: Handle prefill done (mock KV recv)
-    device_len = 50
+    # After prefill: input_len=50, sampled 1 token → device_len=51, cached_len=50
+    cached_len = 50
+    device_len = 51
     msg = PrefillDoneMsg(
         uid=0,
         input_ids=torch.randint(0, 1000, (device_len,), dtype=torch.int32),
         sampling_params=SamplingParams(max_tokens=10),
-        cached_len=0,
+        cached_len=cached_len,
         device_len=device_len,
         kv_cache_indices=torch.arange(device_len, dtype=torch.int32),
         src_rank=0,
@@ -95,7 +97,7 @@ def test_decode_worker():
             uid=i,
             input_ids=torch.randint(0, 1000, (device_len,), dtype=torch.int32),
             sampling_params=SamplingParams(max_tokens=5),
-            cached_len=0,
+            cached_len=cached_len,
             device_len=device_len,
             kv_cache_indices=torch.arange(device_len, dtype=torch.int32),
             src_rank=0,
