@@ -43,7 +43,16 @@ def _run_worker(rank: int, role: str, ready_barrier, done_barrier):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
 
     # Initialize shared NCCL group BEFORE Engine (for KV transfer)
-    dist.init_process_group(backend="nccl", rank=rank, world_size=2)
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = "29501"
+    os.environ["NCCL_SOCKET_IFNAME"] = "lo"
+    os.environ["NCCL_IB_DISABLE"] = "1"
+    dist.init_process_group(
+        backend="nccl",
+        rank=rank,
+        world_size=2,
+        init_method="tcp://127.0.0.1:29501",
+    )
     torch.cuda.set_device(0)
 
     # Patch torch.distributed so Engine doesn't conflict with our NCCL group:
