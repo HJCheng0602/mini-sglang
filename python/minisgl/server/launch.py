@@ -130,8 +130,19 @@ def _run_prefill_worker(args: PDConfig, ack_queue: mp.Queue[str]) -> None:
             worker.shutdown()
 
 def _run_decode_worker(args:PDConfig, ack_queue: mp.Queue[str]) -> None:
-    # TODO: implement decode worker
-    pass
+    import torch
+    from minisgl.pd.decodeworker import DecodeWorker
+
+    with torch.inference_mode():
+        worker = DecodeWorker(args)
+
+        ack_queue.put("Decode worker is ready")
+        try:
+            worker.run_forever()
+        except KeyboardInterrupt:
+            logger = init_logger(__name__)
+            logger.info("Decode worker exiting gracefully...")
+            worker.shutdown()
 
 def launch_prefill_worker(args: PDConfig) -> None:
     from .args import parse_args

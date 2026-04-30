@@ -79,7 +79,7 @@ class KVTransferManager:
         recv_buffers = self.prepare_recv_buffers(kv_cache, num_pages, paged_indices)
         args = KVTransferArgs(
             uid=uid,
-            src_rand=src_rank,
+            src_rank=src_rank,
             dst_rank=dist.get_rank(),
             num_layers=kv_cache.num_layers,
             kv_heads=kv_cache._kv_buffer.shape[4],

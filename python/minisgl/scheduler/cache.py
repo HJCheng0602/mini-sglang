@@ -122,6 +122,10 @@ class CacheManager:
         # [X * page_size] -> [X * page_size, ..., X * page_size + page_size - 1]
         offsets = torch.arange(self.page_size, device=self.device, dtype=torch.int32)
         return (pages.unsqueeze(1) + offsets).flatten()
+    
+    def allocate_for_transfer(self, num_pages:int) -> torch.Tensor:
+        allocated = self._allocate(num_pages)
+        return self._page_to_token(allocated)
 
 
 def _write_page_table(
