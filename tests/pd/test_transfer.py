@@ -1,7 +1,10 @@
 """Tests for PD transfer module: backends and KVTransferManager."""
 from __future__ import annotations
 
+import os
+
 import torch
+import torch.distributed as dist
 from minisgl.pd.base import KVTransferArgs, TransferStatus
 from minisgl.pd.backends import (
     SUPPORTED_TRANSFER_BACKENDS,
@@ -10,6 +13,22 @@ from minisgl.pd.backends import (
 from minisgl.utils import call_if_main, init_logger
 
 logger = init_logger(__name__)
+
+
+def _setup_gloo_distributed():
+    """Initialize gloo distributed for single-process testing."""
+    if not dist.is_initialized():
+        os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+        os.environ.setdefault("MASTER_PORT", "29599")
+        os.environ.setdefault("RANK", "0")
+        os.environ.setdefault("WORLD_SIZE", "1")
+        dist.init_process_group(backend="gloo", rank=0, world_size=1)
+
+
+def _teardown_distributed():
+    """Destroy distributed process group if initialized."""
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 @call_if_main()
@@ -58,32 +77,37 @@ def test_create_invalid_backend():
 @call_if_main()
 def test_gloo_backend_init_transfer():
     """Test Gloo backend init_transfer."""
-    backend = create_transfer_backend("gloo", {})
-    
-    args = KVTransferArgs(
-        uid=123,
-        src_rank=0,
-        dst_rank=1,
-        num_layers=32,
-        kv_heads=8,
-        head_dim=128,
-        page_size=16,
-        num_pages=10,
-    )
-    
-    # Should not raise
-    backend.init_transfer(args)
-    
-    # Check status
-    status = backend.poll(123)
-    assert status == TransferStatus.BOOTSTRAPPING
-    
-    # Cleanup
-    backend.cleanup(123)
-    status = backend.poll(123)
-    assert status == TransferStatus.FAILED
-    
-    logger.info("test_gloo_backend_init_transfer passed")
+    _setup_gloo_distributed()
+    try:
+        backend = create_transfer_backend("gloo", {})
+
+        args = KVTransferArgs(
+            uid=123,
+            src_rank=0,
+            dst_rank=1,
+            num_layers=32,
+            kv_heads=8,
+            head_dim=128,
+            page_size=16,
+            num_pages=10,
+        )
+
+        # Should not raise
+        backend.init_transfer(args)
+
+        # Check status
+        status = backend.poll(123)
+        assert status == TransferStatus.BOOTSTRAPPING
+
+        # Cleanup
+        backend.cleanup(123)
+        status = backend.poll(123)
+        assert status == TransferStatus.FAILED
+
+        backend.shutdown()
+        logger.info("test_gloo_backend_init_transfer passed")
+    finally:
+        _teardown_distributed()
 
 
 @call_if_main()

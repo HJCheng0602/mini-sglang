@@ -71,7 +71,8 @@ class PrefillScheduler:
             return None
         
         batch = self.prefill_manager.schedule_next_batch(self.prefill_budget)
-        logger.debug(f"Scheduled batch with {len(batch.reqs)} requests for prefill.")
+        if batch is not None:
+            logger.debug(f"Scheduled batch with {len(batch.reqs)} requests for prefill.")
         return batch
     
     def prepare_batch(self, batch:Batch):
@@ -105,16 +106,23 @@ class PrefillScheduler:
 
         batch.input_ids = self.token_pool[input_mapping]
 
-        forward_output = self.engine.forward_batch(batch, sample_args)
+        with self.engine_stream_ctx:
+            self.engine.stream.wait_stream(self.stream)
+            forward_output = self.engine.forward_batch(batch, sample_args)
 
         self.token_pool[output_mapping] = forward_output.next_tokens_gpu
 
         return forward_output
     
     def abort_request(self, uid: int) -> bool:
-        seq = self.prefill_manager.abort_req(uid)
-        if seq is not None:
-            self._free_req_resources(seq)
+        # Check if uid is in pending list
+        found_in_pending = any(
+            req.uid == uid for req in self.prefill_manager.pending_list
+        )
+        if found_in_pending:
+            chunked_req = self.prefill_manager.abort_req(uid)
+            if chunked_req is not None:
+                self._free_req_resources(chunked_req)
             return True
         return False
     

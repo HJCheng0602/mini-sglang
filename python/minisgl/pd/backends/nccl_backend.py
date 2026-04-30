@@ -19,19 +19,15 @@ class NCCLTransferBackend(BaseKVTransferBackend):
 
     def init_transfer(self, args:KVTransferArgs) -> None:
         self.pending_transfers[args.uid] = TransferStatus.BOOTSTRAPPING
+        self._ensure_process_group()
 
-    def _ensure_process_group(self, world_size:int, rank:int, master_addr:str, master_port:int) -> None:
+    def _ensure_process_group(self) -> None:
         if self.transfer_group is None:
-            import os
-            os.environ['MASTER_ADDR'] = master_addr
-            os.environ['MASTER_PORT'] = str(master_port)
-
-            dist.init_process_group(
-                backend="nccl",
-                world_size=world_size,
-                rank=rank
-            )
-            self.transfer_group = dist.group.WORLD
+            if dist.is_initialized():
+                self.transfer_group = dist.group.WORLD
+            else:
+                dist.init_process_group(backend="nccl")
+                self.transfer_group = dist.group.WORLD
 
     def send_kv_cache(
         self,
